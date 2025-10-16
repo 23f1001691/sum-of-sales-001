@@ -128,6 +128,24 @@
                 <h2 id="total-sales-heading" class="h4 text-secondary">Total Sales:</h2>
                 <p id="total-sales" class="display-4 fw-bold" aria-live="polite">Calculating...</p>
             </section>
+
+            <!-- Product Sales Table -->
+            <section id="product-sales-section" class="d-none mt-4">
+                <h2 class="h4 text-secondary mb-3">Sales by Product:</h2>
+                <div class="table-responsive">
+                    <table id="product-sales" class="table table-striped table-hover table-bordered">
+                        <thead>
+                            <tr>
+                                <th scope="col">Product</th>
+                                <th scope="col">Sales</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Product sales rows will be inserted here by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
         </main>
 
         <footer>
@@ -137,7 +155,7 @@
 
     <script>
         // Base64 encoded data for data.csv
-        // Decodes to: id,item,sales\n1,ProductA,100\n2,ProductB,150\n3,ProductC,200
+        // Decodes to: id,item,sales\n21,ProductA,100\n22,ProductB,150\n23,ProductC,200
         const base64CSVData = "aWQsZGl0ZW0sc2FsZXMKMjEsUHJvZHVjdEEsMTAwCjIyLFByb2R1Y3RCLDE1MAoyMyxQcm9kdWN0QywyMDA=";
 
         /**
@@ -171,9 +189,15 @@
 
             const headers = lines[0].split(',').map(header => header.trim());
             const salesIndex = headers.indexOf('sales');
+            const itemIndex = headers.indexOf('item'); // Get item index for product aggregation
 
             if (salesIndex === -1) {
                 throw new Error('CSV file must contain a "sales" column.');
+            }
+            if (itemIndex === -1) {
+                // This is a new requirement for the table, ensure 'item' or 'product' is present
+                // Based on base64CSVData, 'item' is the product identifier.
+                throw new Error('CSV file must contain an "item" column for product breakdown.');
             }
 
             const data = [];
@@ -204,31 +228,80 @@
             return data.reduce((sum, row) => sum + parseFloat(row.sales || 0), 0);
         }
 
+        /**
+         * Aggregates sales by product (item) from parsed CSV data.
+         * @param {Array<Object>} data An array of objects, each with 'item' and 'sales' properties.
+         * @returns {Array<{product: string, sales: number}>} An array of objects, each representing total sales for a product.
+         */
+        function aggregateSalesByProduct(data) {
+            const salesByProduct = new Map();
+
+            data.forEach(row => {
+                const product = row.item; // 'item' column is used as the product identifier
+                const sales = parseFloat(row.sales || 0);
+
+                if (product) {
+                    salesByProduct.set(product, (salesByProduct.get(product) || 0) + sales);
+                }
+            });
+
+            // Convert map to an array of objects for easier rendering and sort by product name
+            return Array.from(salesByProduct.entries()).map(([product, sales]) => ({
+                product,
+                sales
+            })).sort((a, b) => a.product.localeCompare(b.product));
+        }
+
         // Main application logic executed when the DOM is fully loaded
         document.addEventListener('DOMContentLoaded', async () => {
             const loadingSpinner = document.getElementById('loading-spinner');
             const errorMessage = document.getElementById('error-message');
             const totalSalesElement = document.getElementById('total-sales');
             const summaryCard = document.getElementById('summary-card');
+            const productSalesSection = document.getElementById('product-sales-section');
+            const productSalesTbody = document.querySelector('#product-sales tbody');
 
             // Initial state: show loading, hide others
             loadingSpinner.classList.remove('d-none');
             errorMessage.classList.add('d-none');
             summaryCard.classList.add('d-none');
+            productSalesSection.classList.add('d-none'); // Hide new section initially
             document.title = 'Sales Summary Loading...'; // Set initial title
 
             try {
                 // Decode the Base64 CSV data
                 const csvText = decodeBase64(base64CSVData);
                 const data = parseCSV(csvText);
+                
+                // Calculate total sales
                 const total = sumSales(data);
+
+                // Aggregate sales by product for the table
+                const aggregatedProductSales = aggregateSalesByProduct(data);
+
+                // Populate the product sales table
+                productSalesTbody.innerHTML = ''; // Clear any previous content
+                aggregatedProductSales.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const tdProduct = document.createElement('td');
+                    const tdSales = document.createElement('td');
+
+                    tdProduct.textContent = item.product;
+                    tdSales.textContent = item.sales.toFixed(2); // Format to two decimal places
+
+                    tr.appendChild(tdProduct);
+                    tr.appendChild(tdSales);
+                    productSalesTbody.appendChild(tr);
+                });
 
                 // Update DOM with results
                 document.title = `Sales Summary c23efc575fc3cf3702941515eee51351034d774b4b5831270674a11a20cc91b5`;
-                totalSalesElement.textContent = total.toFixed(2); // Format to two decimal places
+                totalSalesElement.textContent = total.toFixed(2); // Format total to two decimal places
 
-                // Show summary, hide loading
+                // Show summary and product sales table, hide loading
                 summaryCard.classList.remove('d-none');
+                productSalesSection.classList.remove('d-none'); // Show the new section
+
             } catch (error) {
                 console.error('Failed to process sales data:', error);
                 errorMessage.textContent = `Failed to load sales data: ${error.message}. Please try again later.`;
