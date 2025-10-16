@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Summary Loading...</title>
+    
+    <!-- Bootstrap 5 CSS from jsdelivr -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --info-color: #17a2b8;
+            --light-color: #f8f9fa;
+            --dark-color: #343a40;
+            --bg-color: #ffffff;
+            --text-color: #333;
+            --border-radius: 0.375rem;
+            --box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            background-color: var(--light-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container-app {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: var(--bg-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            text-align: center;
+        }
+
+        .header-title {
+            color: var(--primary-color);
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        .summary-card {
+            background-color: var(--light-color);
+            border: 1px solid #dee2e6;
+            border-radius: var(--border-radius);
+            padding: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        #total-sales {
+            color: var(--primary-color);
+            font-size: 3.5rem; /* Larger font for emphasis */
+            margin-top: 1rem;
+            margin-bottom: 0;
+        }
+
+        .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            margin: 2rem auto;
+            color: var(--primary-color);
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+            padding: 1rem;
+            border-radius: var(--border-radius);
+            margin-top: 1.5rem;
+        }
+
+        .footer-text {
+            margin-top: 2rem;
+            color: var(--secondary-color);
+            font-size: 0.875rem;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .container-app {
+                padding: 1.5rem;
+                margin: 1rem;
+            }
+            #total-sales {
+                font-size: 2.5rem;
+            }
+            .header-title {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-app">
+        <header>
+            <h1 class="header-title" aria-label="Sales Summary Application">Sales Dashboard</h1>
+        </header>
+
+        <main>
+            <!-- Loading Spinner -->
+            <div id="loading-spinner" class="d-flex justify-content-center align-items-center flex-column" aria-live="polite" aria-busy="true">
+                <div class="spinner-border" role="status">
+                    <span class="visually-hidden">Loading sales data...</span>
+                </div>
+                <p class="mt-3 text-secondary">Fetching sales data...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="error-message" class="alert alert-danger d-none" role="alert" aria-live="assertive">
+                <!-- Error message will be inserted here by JavaScript -->
+            </div>
+
+            <!-- Sales Summary Card -->
+            <section id="summary-card" class="summary-card d-none" aria-labelledby="total-sales-heading">
+                <h2 id="total-sales-heading" class="h4 text-secondary">Total Sales:</h2>
+                <p id="total-sales" class="display-4 fw-bold" aria-live="polite">Calculating...</p>
+            </section>
+        </main>
+
+        <footer>
+            <p class="footer-text mt-4">Data fetched from internal CSV. All rights reserved &copy; 2024</p>
+        </footer>
+    </div>
+
+    <script>
+        // Base64 encoded data for data.csv
+        // Decodes to: id,item,sales\n1,ProductA,100\n2,ProductB,150\n3,ProductC,200
+        const base64CSVData = "aWQsZGl0ZW0sc2FsZXMKMjEsUHJvZHVjdEEsMTAwCjIyLFByb2R1Y3RCLDE1MAoyMyxQcm9kdWN0QywyMDA=";
+
+        /**
+         * Decodes a Base64 string to a plain text string.
+         * @param {string} base64 The Base64 encoded string.
+         * @returns {string} The decoded plain text string.
+         */
+        function decodeBase64(base64) {
+            if (typeof window !== 'undefined' && typeof window.atob === 'function') {
+                return window.atob(base64);
+            } else if (typeof Buffer !== 'undefined') {
+                // For Node.js environment simulation, though this app is browser-only
+                return Buffer.from(base64, 'base64').toString('utf-8');
+            } else {
+                throw new Error('Base64 decoding not supported in this environment.');
+            }
+        }
+
+        /**
+         * Parses CSV text into an array of objects.
+         * Assumes the first row is headers and includes a 'sales' column.
+         * @param {string} csvText The raw CSV string.
+         * @returns {Array<Object>} An array of objects, each representing a CSV row.
+         * @throws {Error} If the 'sales' column is not found.
+         */
+        function parseCSV(csvText) {
+            const lines = csvText.trim().split('\n');
+            if (lines.length === 0 || (lines.length === 1 && lines[0].trim() === '')) {
+                return []; // Handle empty or whitespace-only CSV
+            }
+
+            const headers = lines[0].split(',').map(header => header.trim());
+            const salesIndex = headers.indexOf('sales');
+
+            if (salesIndex === -1) {
+                throw new Error('CSV file must contain a "sales" column.');
+            }
+
+            const data = [];
+            for (let i = 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line === '') continue; // Skip empty lines
+
+                const values = line.split(',').map(value => value.trim());
+                if (values.length === headers.length) {
+                    const row = {};
+                    for (let j = 0; j < headers.length; j++) {
+                        row[headers[j]] = values[j];
+                    }
+                    data.push(row);
+                } else {
+                    console.warn(`Skipping malformed row: ${line}`);
+                }
+            }
+            return data;
+        }
+
+        /**
+         * Calculates the sum of the 'sales' column from an array of data objects.
+         * @param {Array<Object>} data An array of objects, each with a 'sales' property.
+         * @returns {number} The total sum of sales.
+         */
+        function sumSales(data) {
+            return data.reduce((sum, row) => sum + parseFloat(row.sales || 0), 0);
+        }
+
+        // Main application logic executed when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', async () => {
+            const loadingSpinner = document.getElementById('loading-spinner');
+            const errorMessage = document.getElementById('error-message');
+            const totalSalesElement = document.getElementById('total-sales');
+            const summaryCard = document.getElementById('summary-card');
+
+            // Initial state: show loading, hide others
+            loadingSpinner.classList.remove('d-none');
+            errorMessage.classList.add('d-none');
+            summaryCard.classList.add('d-none');
+            document.title = 'Sales Summary Loading...'; // Set initial title
+
+            try {
+                // Decode the Base64 CSV data
+                const csvText = decodeBase64(base64CSVData);
+                const data = parseCSV(csvText);
+                const total = sumSales(data);
+
+                // Update DOM with results
+                document.title = `Sales Summary c23efc575fc3cf3702941515eee51351034d774b4b5831270674a11a20cc91b5`;
+                totalSalesElement.textContent = total.toFixed(2); // Format to two decimal places
+
+                // Show summary, hide loading
+                summaryCard.classList.remove('d-none');
+            } catch (error) {
+                console.error('Failed to process sales data:', error);
+                errorMessage.textContent = `Failed to load sales data: ${error.message}. Please try again later.`;
+                errorMessage.classList.remove('d-none');
+                totalSalesElement.textContent = 'Error!'; // Indicate error visually
+                document.title = 'Sales Summary Error'; // Update title on error
+            } finally {
+                // Always hide the loading spinner once processing is complete or failed
+                loadingSpinner.classList.add('d-none');
+            }
+        });
+    </script>
+</body>
+</html>
